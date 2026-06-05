@@ -1,29 +1,40 @@
 import {
   mqttSubscriber
 }
-from "./mqtt-subscriber.js";
+  from "./mqtt-subscriber.js";
 
 import {
   validatePayload
 }
-from "./validator.js";
+  from "./validator.js";
 
 import {
   verifyChecksum
 }
-from "./checksum-verifier.js";
+  from "./checksum-verifier.js";
 
 import {
   enrichPayload
 }
-from "./enricher.js";
+  from "./enricher.js";
 
 import { logger }
-from "../utils/logger.js";
+  from "../utils/logger.js";
+
+import {
+  queueManager
+}
+  from "./queue-manager-instance.js";
+import { BatchWriterManager } from "./batch-writer-manager.js";
+import { metricsService } from "../services/metrics-instance.js";
 
 export class SubscriberService {
 
+  private readonly batchWriterManager = new BatchWriterManager();
+
   start() {
+    this.batchWriterManager
+      .start();
 
     mqttSubscriber.on(
       "connect",
@@ -47,9 +58,15 @@ export class SubscriberService {
 
         try {
 
+
           const payload =
             JSON.parse(
               message.toString()
+            );
+
+          metricsService
+            .incrementReceived(
+              topic
             );
 
           if (
@@ -67,6 +84,11 @@ export class SubscriberService {
             return;
           }
 
+          metricsService
+            .incrementValidated(
+              topic
+            );
+
           if (
             !verifyChecksum(
               payload
@@ -81,6 +103,11 @@ export class SubscriberService {
                 "Checksum failed"
             });
 
+            metricsService
+              .incrementCorruptDropped(
+                topic
+              );
+
             return;
           }
 
@@ -90,8 +117,25 @@ export class SubscriberService {
               payload
             );
 
-          console.log(
-            enriched
+          const queued =
+            queueManager.enqueue(
+              topic,
+              enriched
+            );
+
+          if (!queued) {
+
+            logger.error({
+              topic,
+              message:
+                "Queue full. Message dropped."
+            });
+
+          }
+
+          metricsService.updateQueueDepth(
+            topic,
+            queueManager.getQueueDepth(topic)
           );
 
         } catch (error) {
