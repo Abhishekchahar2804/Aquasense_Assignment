@@ -36,28 +36,46 @@ export class SubscriberService {
     this.batchWriterManager
       .start();
 
-    mqttSubscriber.on(
-      "connect",
-      () => {
+    if (mqttSubscriber.connected) {
 
-        mqttSubscriber.subscribe(
-          "sensors/#"
-        );
+      mqttSubscriber.subscribe(
+        "sensors/#"
+      );
 
-        logger.info({
-          message:
-            "Subscribed to sensors/#"
-        });
+      logger.info({
+        message:
+          "Subscribed to sensors/#"
+      });
 
-      }
-    );
+    } else {
+
+      mqttSubscriber.once(
+        "connect",
+        () => {
+
+          mqttSubscriber.subscribe(
+            "sensors/#"
+          );
+
+          logger.info({
+            message:
+              "Subscribed to sensors/#"
+          });
+
+        }
+      );
+
+    }
 
     mqttSubscriber.on(
       "message",
       (topic, message) => {
 
         try {
-
+          console.log(
+            "MESSAGE RECEIVED",
+            topic
+          );
 
           const payload =
             JSON.parse(
